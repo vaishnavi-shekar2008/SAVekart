@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAVEkart — Smart Warehouse & Delivery Optimizer</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <span class="kicker">SAVEkart · HACK-A-MATICS 2026 · THEME: VECTOR</span>
+      <h1>Where should SAVEkart place the warehouse?</h1>
+      <p>Weighted-centroid optimization for an Estonian e-commerce network — turning order volume and geography into warehouse placement that keeps delivery fast and complaints down.</p>
+    </div>
+    <div class="score-badge">
+      <div>
+        <div class="num" id="satScore">—</div>
+        <div class="delta" id="satDelta"></div>
+      </div>
+      <div class="lbl">customer satisfaction index (weighted by daily orders)</div>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <div class="panel">
+      <h2><span class="swatch"></span>Network map</h2>
+      <div id="map"></div>
+      <div class="map-legend">
+        <span><span class="dot" style="background:var(--muted)"></span>Demand region (size = orders/day)</span>
+        <span><span class="dot" style="background:var(--coral)"></span>Naive warehouse (before)</span>
+        <span><span class="dot" style="background:var(--teal)"></span>Optimized warehouse (after)</span>
+        <span>→ vector = direction &amp; magnitude of the move</span>
+      </div>
+    </div>
+
+    <div class="panel controls">
+      <h2><span class="swatch"></span>Optimizer controls</h2>
+
+      <div class="field">
+        <label>Number of warehouses <b id="kVal">4</b></label>
+        <input type="range" id="kSlider" min="1" max="8" value="4">
+      </div>
+
+      <div class="field">
+        <label>Capacity per warehouse (orders/day)</label>
+        <input type="number" id="capInput" value="900" min="100" step="50">
+      </div>
+
+      <button class="btn" id="runBtn">Run optimization</button>
+      <button class="btn ghost" id="animBtn">▶ Play convergence (step by step)</button>
+
+      <div class="stat-row">
+        <div class="stat">
+          <div class="k">Weighted cost — before</div>
+          <div class="v small" id="costBefore">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">Weighted cost — after</div>
+          <div class="v" id="costAfter">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">Cost reduction</div>
+          <div class="v small" style="color:var(--green)" id="costDelta">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">Avg. distance to warehouse</div>
+          <div class="v small" id="avgDist">—</div>
+        </div>
+      </div>
+
+      <div id="capacityAlert"></div>
+
+      <div class="stat-row impact-stats">
+        <div class="stat">
+          <div class="k">Carbon footprint / day</div>
+          <div class="v small" id="carbonDay">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">CO₂ / order</div>
+          <div class="v small" id="carbonOrder">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">Delivery price</div>
+          <div class="v small" id="dynamicPrice">—</div>
+        </div>
+        <div class="stat">
+          <div class="k">Crowd-house saving</div>
+          <div class="v small" id="crowdSaving">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel full">
+      <h2><span class="swatch"></span>Before → after</h2>
+      <div class="compare-grid">
+        <div class="compare-col">
+          <div class="tag">BEFORE — naive placement (warehouse at the k biggest demand centers)</div>
+          <div class="row"><span>Total weighted cost</span><b id="cmpCostBefore">—</b></div>
+          <div class="row"><span>Avg. distance</span><b id="cmpDistBefore">—</b></div>
+          <div class="row"><span>Satisfaction index</span><b id="cmpSatBefore">—</b></div>
+        </div>
+        <div class="arrow-mid">→</div>
+        <div class="compare-col">
+          <div class="tag after">AFTER — weighted k-means optimized</div>
+          <div class="row"><span>Total weighted cost</span><b id="cmpCostAfter">—</b></div>
+          <div class="row"><span>Avg. distance</span><b id="cmpDistAfter">—</b></div>
+          <div class="row"><span>Satisfaction index</span><b id="cmpSatAfter">—</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel full">
+      <h2><span class="swatch"></span>Cost vs. number of warehouses</h2>
+      <div class="chart-wrap">
+        <svg id="tradeoffChart" width="620" height="260"></svg>
+        <div class="chart-note">
+          Each point re-runs the optimizer for that warehouse count and plots the resulting <b>total weighted delivery cost</b>. The marked point is the suggested elbow — past it, an extra warehouse buys little cost improvement for a lot of extra infrastructure.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel full">
+      <h2><span class="swatch"></span>Maths behind SAVEkart</h2>
+      <div class="math-grid">
+        <div class="math-card">
+          <div class="math-label">01 · Warehouse objective</div>
+          <div class="formula">C(W) = Σ dᵢ × D(rᵢ, W)</div>
+          <p>Demand-weighted distance keeps high-order regions closer to the warehouse. SAVEkart uses the Haversine distance and weighted Lloyd's iterations already present in the optimizer.</p>
+        </div>
+        <div class="math-card">
+          <div class="math-label">02 · Carbon model</div>
+          <div class="formula">CO₂ = Σ km × deliveries × EF</div>
+          <p>The demo estimates emissions from delivery distance and an adjustable vehicle emission factor. Lower network distance therefore reduces estimated CO₂.</p>
+        </div>
+        <div class="math-card">
+          <div class="math-label">03 · Dynamic pricing</div>
+          <div class="formula">P = P₀(1 + αD + βT − γG)</div>
+          <p>Distance and peak demand increase the simulated delivery price; grouped “crowd-house” deliveries reduce it by sharing the last-mile trip.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel full">
+      <h2><span class="swatch"></span>Carbon + crowd-house delivery</h2>
+      <div class="compare-grid">
+        <div class="compare-col">
+          <div class="tag">STANDARD LAST MILE</div>
+          <div class="row"><span>Estimated CO₂/day</span><b id="carbonStandard">—</b></div>
+          <div class="row"><span>Vehicle trips</span><b id="tripsStandard">—</b></div>
+          <div class="row"><span>Average price/order</span><b id="priceStandard">—</b></div>
+        </div>
+        <div class="arrow-mid">→</div>
+        <div class="compare-col">
+          <div class="tag after">CROWD-HOUSE CONSOLIDATED</div>
+          <div class="row"><span>Estimated CO₂/day</span><b id="carbonCrowd">—</b></div>
+          <div class="row"><span>Vehicle trips</span><b id="tripsCrowd">—</b></div>
+          <div class="row"><span>Average price/order</span><b id="priceCrowd">—</b></div>
+        </div>
+      </div>
+      <div class="control-strip">
+        <label for="peakInput">Peak-demand multiplier <b id="peakVal">1.00×</b></label>
+        <input type="range" id="peakInput" min="0.80" max="1.40" step="0.05" value="1.00">
+        <label for="groupInput">Crowd-house grouping <b id="groupVal">25%</b></label>
+        <input type="range" id="groupInput" min="0" max="0.50" step="0.05" value="0.25">
+      </div>
+    </div>
+
+    <div class="panel full">
+      <h2><span class="swatch"></span>Region-level detail</h2>
+      <div class="regions-wrap"><table class="regions" id="regionTable">
+        <thead>
+          <tr><th>Region</th><th>Orders/day</th><th>Assigned warehouse</th><th>Distance</th><th>CO₂/day</th><th>Status</th></tr>
+        </thead>
+        <tbody id="regionBody"></tbody>
+      </table></div>
+    </div>
+
+  </div>
+
+  <footer>SAVEkart — built for Hack-a-Matics · Pentagram × BMSCE IEEE Computer Society · Theme: VECTOR</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
